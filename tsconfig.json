@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "experimentalDecorators": false
+  },
+  "include": ["tasks/**/*.ts", "./test/**/*.ts", "global.d.ts"],
+  "exclude": ["**/node_modules/*"],
+  "files": ["./hardhat.config.ts"]
+}
