@@ -9,13 +9,12 @@ import "./libraries/WadRayMath.sol";
 abstract contract InstaPunksState {
     uint256 public mintPrice;
     uint256 public maxSupply;
-
     uint256 public totalSupply;
-    mapping(address => uint256) public holderLastMintBlocks;
 
     uint256 public feeIndex;
     mapping(address => uint256) public holderFeeIndices;
     mapping(address => uint256) public holderFees;
+
     uint256 devFund;
 }
 
@@ -79,15 +78,14 @@ contract InstaPunks is InstaPunksState, ERC721Upgradeable, OwnableUpgradeable, I
         holderFeeIndices[msg.sender] = feeIndex;
 
         (bool sent, ) = msg.sender.call{value: feeShare}("");
-        require(sent, "InstaPunks: Failed to send Ether");
+        require(sent, "InstaPunks: failed to send Ether");
     }
 
     function withdrawDevFund(address to) public onlyOwner {
-        if (devFund == 0) return;
-
-        (bool sent, ) = to.call{value: devFund}("");
-        require(sent, "InstaPunks: Failed to send Ether");
-
+        uint256 amount = devFund;
+        if (amount == 0) return;
         devFund = 0;
+        (bool sent, ) = to.call{value: amount}("");
+        require(sent, "InstaPunks: failed to send Ether");
     }
 }
