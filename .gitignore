@@ -7,3 +7,7 @@ artifacts
 typechain
 
 yarn-error.log
+
+#Coverage
+coverage
+coverage.json

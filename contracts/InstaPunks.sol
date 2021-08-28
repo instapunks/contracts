@@ -38,8 +38,6 @@ contract InstaPunks is InstaPunksState, ERC721Upgradeable, OwnableUpgradeable, I
         require(totalSupply < maxSupply, "InstaPunks: max token supply reached");
         require(msg.value >= mintPrice, "InstaPunks: insufficient value");
 
-        holderLastMintBlocks[msg.sender] = block.number;
-
         uint256 tokenId = totalSupply++;
         _mint(msg.sender, tokenId);
 
@@ -52,10 +50,12 @@ contract InstaPunks is InstaPunksState, ERC721Upgradeable, OwnableUpgradeable, I
         address to,
         uint256 /*tokenId*/
     ) internal virtual override {
+        // Mint
         if (from != address(0)) {
             holderFees[from] += _feeAmount(from);
             holderFeeIndices[from] = feeIndex;
         }
+        // Burn
         if (to != address(0)) {
             holderFees[to] += _feeAmount(to);
             holderFeeIndices[to] = feeIndex;
