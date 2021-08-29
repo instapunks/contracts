@@ -1,14 +1,8 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { InstaPunks, InstaPunks__factory} from "../typechain";
+import { InstaPunks } from "../typechain";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-
-const amountOf = (value: number) =>
-    ethers.utils.parseEther(String(value));
-
-const MINT_PRICE = amountOf(0.05);
-const MINT_BLOCK_LIMIT = 3;
-const MAX_SUPPLY = 10;
+import { amountOf, Context, deployContext, MAX_SUPPLY, MINT_PRICE, OFFSET } from "./suit/context";
 
 const Errors = {
   MAX_TOKEN_SUPPLY_REACHED: "InstaPunks: max token supply reached",
@@ -21,23 +15,37 @@ describe("InstaPunks", function() {
   let account: SignerWithAddress;
   let account2: SignerWithAddress;
   let account3: SignerWithAddress;
-  let treasuser: SignerWithAddress
+  let treasuser: SignerWithAddress;
+  let context: Context;
   let instaPunks: InstaPunks;
+  let mint: typeof Context.prototype.mint;
+  let waitBlocks: typeof Context.prototype.waitBlocks;
+
+  let sendFee: typeof Context.prototype.sendFee;
+  let transferToken: typeof Context.prototype.transferToken;
+  let withdrawFeeShare: typeof Context.prototype.withdrawFeeShare;
 
   before(async () => {
     [owner, account, account2, account3, treasuser] = await ethers.getSigners();
-    await waitBlocks(10);
   });
 
   beforeEach(async () => {
-    instaPunks = await new InstaPunks__factory(owner).deploy();
-    await instaPunks.initialize(MINT_PRICE, MAX_SUPPLY)
+    context = await deployContext(ethers);
+
+    instaPunks = context.instaPunks;
+    mint = context.mint;
+    waitBlocks = context.waitBlocks;
+    sendFee = context.sendFee;
+    transferToken = context.transferToken;
+    withdrawFeeShare = context.withdrawFeeShare;
+
+    await waitBlocks(10);
   });
 
   describe("Mint", () => {
     it("Should mint NFT", async () => {
-      await mint(account);
-      expect(await instaPunks.ownerOf(0)).to.equal(account.address);
+      await context.mint(account);
+      expect(await instaPunks.ownerOf(1)).to.equal(account.address);
     });
 
     it("Should not allow to mint having low mint price", async () => {
@@ -51,11 +59,19 @@ describe("InstaPunks", function() {
     it("Should not exceed MAX_SUPPLY", async () => {
       for (let i = 0; i < MAX_SUPPLY; i++) {
         await mint(account);
-        await waitBlocks(MINT_BLOCK_LIMIT);
       }
       expect(await instaPunks.balanceOf(account.address)).to.equal(MAX_SUPPLY);
       expect(await instaPunks.totalSupply()).to.equal(MAX_SUPPLY);
       await expect(instaPunks.connect(account2).mint()).to.be.revertedWith(Errors.MAX_TOKEN_SUPPLY_REACHED);
+    });
+
+    it("Should mint tokens with offset", async () => {
+      for (let i = 0; i < MAX_SUPPLY; i++) {
+        await mint(account);
+        const expectedTokenId = (OFFSET + i) % MAX_SUPPLY;
+        expect(await instaPunks.ownerOf(expectedTokenId)).to.equal(account.address);
+        expect(await instaPunks.balanceOf(account.address)).to.equal(i + 1);
+      }
     });
   });
 
@@ -81,7 +97,7 @@ describe("InstaPunks", function() {
 
       await sendFee(1);
 
-      await transferToken(account2, account, 1);
+      await transferToken(account2, account, 2);
 
       await sendFee(1);
 
@@ -112,7 +128,7 @@ describe("InstaPunks", function() {
       await mint(account2);
 
       await sendFee(1);
-      await transferToken(account, account2, 0);
+      await transferToken(account, account2, 1);
 
       expect(await withdrawFeeShare(account)).to.equal(amountOf(0.5).div(2));
     });
@@ -122,7 +138,7 @@ describe("InstaPunks", function() {
       await mint(account2);
 
       await sendFee(1);
-      await transferToken(account, account2, 0);
+      await transferToken(account, account2, 1);
       await sendFee(1);
 
       expect(await withdrawFeeShare(account)).to.equal(amountOf(0.5).div(2));
@@ -139,86 +155,62 @@ describe("InstaPunks", function() {
 
   describe("Dev Fund", () => {
     it("Should allow owner to withdraw dev fund", async () => {
-      await instaPunks.connect(owner).withdrawDevFund(treasuser.address)
-    })
+      await instaPunks.connect(owner).withdrawDevFund(treasuser.address);
+    });
 
     it("Should not allow non-owner to withdraw dev fund", async () => {
-      await expect(instaPunks.connect(account).withdrawDevFund(treasuser.address)).to.be.revertedWith(Errors.NOT_ALLOWED)
-    })
+      await expect(instaPunks.connect(account).withdrawDevFund(treasuser.address)).to.be.revertedWith(Errors.NOT_ALLOWED);
+    });
 
-    it("Should withdraw dev fund without fee distribution", async() => {
-      await mint(account)
-      await mint(account2)
-      await mint(account3)
+    it("Should withdraw dev fund without fee distribution", async () => {
+      await mint(account);
+      await mint(account2);
+      await mint(account3);
 
-      const balanceBefore = await treasuser.getBalance()
-      await instaPunks.withdrawDevFund(treasuser.address)
-      const balanceAfter = await treasuser.getBalance()
-      expect(balanceAfter.sub(balanceBefore)).to.equal(MINT_PRICE.mul(3))
-    })
+      const balanceBefore = await treasuser.getBalance();
+      await instaPunks.withdrawDevFund(treasuser.address);
+      const balanceAfter = await treasuser.getBalance();
+      expect(balanceAfter.sub(balanceBefore)).to.equal(MINT_PRICE.mul(3));
+    });
 
-    it("Should withdraw dev fund after fee distribution", async() => {
-      await mint(account)
-      await sendFee(2)
+    it("Should withdraw dev fund after fee distribution", async () => {
+      await mint(account);
+      await sendFee(2);
 
-      const balanceBefore = await treasuser.getBalance()
-      await instaPunks.withdrawDevFund(treasuser.address)
-      const balanceAfter = await treasuser.getBalance()
+      const balanceBefore = await treasuser.getBalance();
+      await instaPunks.withdrawDevFund(treasuser.address);
+      const balanceAfter = await treasuser.getBalance();
 
-      expect(balanceAfter.sub(balanceBefore)).to.equal(amountOf(2).div(2).add(MINT_PRICE))
-    })
+      expect(balanceAfter.sub(balanceBefore)).to.equal(amountOf(2).div(2).add(MINT_PRICE));
+    });
 
-    it("Should withdraw dev fund multiple times", async() => {
-      await mint(account)
-      await sendFee(2)
+    it("Should withdraw dev fund multiple times", async () => {
+      await mint(account);
+      await sendFee(2);
 
-      const balanceBefore = await treasuser.getBalance()
-      await instaPunks.withdrawDevFund(treasuser.address)
-      await mint(account)
-      await instaPunks.withdrawDevFund(treasuser.address)
-      await sendFee(1)
-      await instaPunks.withdrawDevFund(treasuser.address)
-      const balanceAfter = await treasuser.getBalance()
+      const balanceBefore = await treasuser.getBalance();
+      await instaPunks.withdrawDevFund(treasuser.address);
+      await mint(account);
+      await instaPunks.withdrawDevFund(treasuser.address);
+      await sendFee(1);
+      await instaPunks.withdrawDevFund(treasuser.address);
+      const balanceAfter = await treasuser.getBalance();
 
-      expect(balanceAfter.sub(balanceBefore)).to.equal(amountOf(2 + 1).div(2).add(MINT_PRICE.mul(2)))
-    })
+      expect(balanceAfter.sub(balanceBefore)).to.equal(amountOf(2 + 1).div(2).add(MINT_PRICE.mul(2)));
+    });
 
 
-    it("Should withdraw nothing when dev fund is empty", async() => {
-      await mint(account)
-      await sendFee(2)
+    it("Should withdraw nothing when dev fund is empty", async () => {
+      await mint(account);
+      await sendFee(2);
 
-      await instaPunks.withdrawDevFund(treasuser.address)
+      await instaPunks.withdrawDevFund(treasuser.address);
 
-      const balanceBefore = await treasuser.getBalance()
-      await instaPunks.withdrawDevFund(treasuser.address)
-      const balanceAfter = await treasuser.getBalance()
+      const balanceBefore = await treasuser.getBalance();
+      await instaPunks.withdrawDevFund(treasuser.address);
+      const balanceAfter = await treasuser.getBalance();
 
-      expect(balanceAfter.sub(balanceBefore)).to.equal(0)
-    })
-  })
-
-  const withdrawFeeShare = async (account: SignerWithAddress) => {
-    const balanceBefore = await account.getBalance();
-    const tx = await (await instaPunks.connect(account).withdrawFeeShare()).wait();
-    const balanceAfter = await account.getBalance();
-    return balanceAfter.sub(balanceBefore).add(tx.cumulativeGasUsed.mul(tx.effectiveGasPrice));
-  };
-  
-  const mint = async (account: SignerWithAddress, value = MINT_PRICE) => {
-    return instaPunks.connect(account).mint({value});
-  }
-
-  const waitBlocks = async (count: number) => {
-    for (let i = 0; i < count; i++) {
-      await ethers.provider.send("evm_mine", []);
-    }
-  };
-
-  const sendFee = async (value: number, account = owner) =>
-    account.sendTransaction({ to: instaPunks.address, value: amountOf(value) });
-
-  const transferToken = async (from: SignerWithAddress, to: SignerWithAddress, tokenId: number) =>
-    await instaPunks.connect(from)["safeTransferFrom(address,address,uint256)"](from.address, to.address, tokenId);
-  
+      expect(balanceAfter.sub(balanceBefore)).to.equal(0);
+    });
+  });
 });

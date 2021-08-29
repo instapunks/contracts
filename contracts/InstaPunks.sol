@@ -2,14 +2,18 @@
 pragma solidity >=0.8.0 < 0.9.0;
 
 import "./interfaces/IInstaPunks.sol";
+import "./interfaces/IInstaPunksOffsetProvider.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
 import "./libraries/WadRayMath.sol";
 
 abstract contract InstaPunksState {
     uint256 public mintPrice;
     uint256 public maxSupply;
     uint256 public totalSupply;
+
+    uint256 internal offset;
 
     uint256 public feeIndex;
     mapping(address => uint256) public holderFeeIndices;
@@ -21,11 +25,12 @@ abstract contract InstaPunksState {
 contract InstaPunks is InstaPunksState, ERC721Upgradeable, OwnableUpgradeable, IInstaPunks {
     using WadRayMath for uint256;
 
-    function initialize(uint256 _mintPrice, uint256 _maxSupply) public initializer {
+    function initialize(uint256 _mintPrice, uint256 _maxSupply, address _offsetProvider) public initializer {
         __ERC721_init("INSTAPUNKS", "IP");
         __Ownable_init_unchained();
         mintPrice = _mintPrice;
         maxSupply = _maxSupply;
+        offset = IInstaPunksOffsetProvider(_offsetProvider).getOffset() % _maxSupply;
     }
 
     receive() external payable {
@@ -38,7 +43,7 @@ contract InstaPunks is InstaPunksState, ERC721Upgradeable, OwnableUpgradeable, I
         require(totalSupply < maxSupply, "InstaPunks: max token supply reached");
         require(msg.value >= mintPrice, "InstaPunks: insufficient value");
 
-        uint256 tokenId = totalSupply++;
+        uint256 tokenId = (offset + totalSupply++) % maxSupply;
         _mint(msg.sender, tokenId);
 
         devFund += msg.value;
