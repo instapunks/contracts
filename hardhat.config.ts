@@ -8,6 +8,11 @@ import "solidity-coverage";
 
 import { HardhatUserConfig } from "hardhat/config"
 
+const accounts = (
+  process.env.PRIVATE_KEYS ||
+  "000000000000000000000000000000000000000000000000000000000000d880"
+).split(",")
+
 const config: HardhatUserConfig = {
   solidity: "0.8.4",
   networks: {
@@ -15,9 +20,19 @@ const config: HardhatUserConfig = {
       initialBaseFeePerGas: 0, // workaround from https://github.com/sc-forks/solidity-coverage/issues/652#issuecomment-896330136 . Remove when that issue is closed.
     },
     ropsten: {
-      url: process.env.ROPSTEN_URL || "",
-      accounts:
-        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      url: `https://ropsten.infura.io/v3/${process.env.INFURA_KEY}`,
+      chainId: 3,
+      accounts
+    },
+    kovan: {
+      url: `https://kovan.infura.io/v3/${process.env.INFURA_KEY}`,
+      chainId: 42,
+      accounts
+    },
+    rinkeby: {
+      url: `https://rinkeby.infura.io/v3/${process.env.INFURA_KEY}`,
+      chainId: 4,
+      accounts
     },
   },
   gasReporter: {

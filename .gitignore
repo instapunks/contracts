@@ -11,3 +11,9 @@ yarn-error.log
 #Coverage
 coverage
 coverage.json
+
+#Test
+test-scripts
+
+#Idea files
+.idea
